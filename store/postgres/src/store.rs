@@ -6,13 +6,14 @@ use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
 use futures::sync::mpsc::{channel, Receiver, Sender};
-use graph::serde_json;
-use graph::tokio;
-
-use functions::{revert_block, set_config};
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
+use graph::serde_json;
+use graph::tokio;
+
+use entity_changes::{EntityChange, EntityChangeListener};
+use functions::{revert_block, set_config};
 
 embed_migrations!("./migrations");
 
@@ -45,7 +46,6 @@ pub struct Store {
     event_sink: Option<Sender<StoreEvent>>,
     logger: slog::Logger,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
-    _config: StoreConfig,
     pub conn: PgConnection,
 }
 
@@ -59,7 +59,7 @@ impl Store {
 
         // Connect to Postgres
         let conn =
-            PgConnection::establish(config.url.as_str()).expect("Failed to connect to Postgres");
+            PgConnection::establish(config.url.as_str()).expect("failed to connect to Postgres");
 
         info!(logger, "Connected to Postgres"; "url" => &config.url);
 
@@ -68,15 +68,23 @@ impl Store {
 
         // Create the store
         let mut store = Store {
-            logger,
+            logger: logger.clone(),
             event_sink: None,
             schema_provider_event_sink: sink,
-            _config: config,
             conn: conn,
         };
 
         // Spawn a task that handles incoming schema provider events
         store.handle_schema_provider_events(stream);
+
+        // Listen to entity changes in Postgres
+        let mut listener = EntityChangeListener::new(logger, config.url.clone());
+        let entity_changes = listener
+            .take_event_stream()
+            .expect("Failed to listen to entity change events in Postgres");
+
+        // Handle entity changes as they come in
+        store.handle_entity_changes(entity_changes);
 
         // Return the store
         store
@@ -88,6 +96,23 @@ impl Store {
             // We are currently not doing anything in response to schema events
             Ok(())
         }));
+    }
+
+    /// Handles entity changes emitted by Postgres.
+    fn handle_entity_changes(
+        &mut self,
+        entity_changes: Box<Stream<Item = EntityChange, Error = ()> + Send>,
+    ) {
+        let logger = self.logger.clone();
+        tokio::spawn(
+            entity_changes
+                .for_each(move |change| {
+                    debug!(logger, "Entity change";
+                           "change" => format!("{:?}", change));
+                    Ok(())
+                })
+                .and_then(|_| Ok(())),
+        );
     }
 
     /// Handles block reorganizations.
