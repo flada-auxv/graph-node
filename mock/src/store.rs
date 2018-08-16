@@ -101,19 +101,12 @@ impl Store for MockStore {
         self.schema_provider_event_sink.clone()
     }
 
-    fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
-        // If possible, create a new channel for streaming store events
-        let result = match self.event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.event_sink = Some(sink);
-                Ok(stream)
-            }
-        };
-
-        self.generate_mock_events();
-        result
+    fn subscribe(
+        &mut self,
+        subgraph: String,
+        entities: Vec<String>,
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+        unimplemented!();
     }
 }
 
@@ -142,7 +135,11 @@ impl Store for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
-        panic!("called FakeStore")
+    fn subscribe(
+        &mut self,
+        subgraph: String,
+        entities: Vec<String>,
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send> {
+        unimplemented!();
     }
 }
