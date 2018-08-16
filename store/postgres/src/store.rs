@@ -12,7 +12,7 @@ use graph::prelude::*;
 use graph::serde_json;
 use graph::tokio;
 
-use entity_changes::{EntityChange, EntityChangeListener};
+use entity_changes::EntityChangeListener;
 use functions::{revert_block, set_config};
 
 embed_migrations!("./migrations");
