@@ -1,10 +1,10 @@
 use ethereum_types::H256;
 use futures::sync::mpsc::{Receiver, Sender};
+use futures::Stream;
 
 use components::schema::SchemaProviderEvent;
 use data::store::*;
 use std::fmt;
-use util::stream::StreamError;
 
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -92,6 +92,15 @@ pub enum StoreEvent {
     EntityChanged(Entity),
 }
 
+/// Entity change events emitted by [Store](trait.Store.html) implementations.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EntityChange {
+    pub subgraph: String,
+    pub entity: String,
+    pub id: String,
+    pub data: Entity,
+}
+
 /// The source of the events being sent to the store
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventSource {
@@ -130,7 +139,11 @@ pub trait Store: BasicStore + Send {
     /// should implement changes.
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
 
-    /// Receiver from which others can read events emitted by the store.
-    /// Can only be called once. Any consecutive call will result in a StreamError.
-    fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError>;
+    /// Subscribe to entity changes for specific subgraphs and entities.
+    /// Returns a stream of entity changes that match the input arguments.
+    fn subscribe(
+        &mut self,
+        subgraph: String,
+        entities: Vec<String>,
+    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send>;
 }
