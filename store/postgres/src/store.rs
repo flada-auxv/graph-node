@@ -5,7 +5,11 @@ use diesel::prelude::*;
 use diesel::sql_types::Text;
 use diesel::{debug_query, delete, insert_into, result, select};
 use filter::store_filter;
+use futures::stream;
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use uuid::Uuid;
 
 use graph::components::store::{EventSource, Store as StoreTrait};
 use graph::prelude::*;
@@ -16,6 +20,13 @@ use entity_changes::EntityChangeListener;
 use functions::{revert_block, set_config};
 
 embed_migrations!("./migrations");
+
+/// Internal representation of a Store subscription.
+struct Subscription {
+    pub subgraph: String,
+    pub entities: Vec<String>,
+    pub sender: Sender<EntityChange>,
+}
 
 /// Run all initial schema migrations.
 ///
@@ -46,6 +57,7 @@ pub struct Store {
     event_sink: Option<Sender<StoreEvent>>,
     logger: slog::Logger,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
+    subscriptions: Arc<RwLock<HashMap<String, Subscription>>>,
     pub conn: PgConnection,
 }
 
@@ -71,7 +83,8 @@ impl Store {
             logger: logger.clone(),
             event_sink: None,
             schema_provider_event_sink: sink,
-            conn: conn,
+            subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            conn,
         };
 
         // Spawn a task that handles incoming schema provider events
@@ -104,15 +117,32 @@ impl Store {
         entity_changes: Box<Stream<Item = EntityChange, Error = ()> + Send>,
     ) {
         let logger = self.logger.clone();
-        tokio::spawn(
-            entity_changes
-                .for_each(move |change| {
-                    debug!(logger, "Entity change";
-                           "change" => format!("{:?}", change));
-                    Ok(())
+        let subscriptions = self.subscriptions.clone();
+
+        tokio::spawn(entity_changes.for_each(move |change| {
+            debug!(logger, "Entity change";
+                   "subgraph" => &change.subgraph,
+                   "entity" => &change.entity,
+                   "id" => &change.id);
+
+            let subscriptions = subscriptions.read().unwrap();
+
+            let matching_senders = subscriptions
+                .values()
+                .filter(|subscription| {
+                    subscription.subgraph == change.subgraph
+                        && subscription.entities.contains(&change.entity)
                 })
-                .and_then(|_| Ok(())),
-        );
+                .map(|subscription| subscription.sender.clone())
+                .collect::<Vec<_>>();
+
+            stream::iter_ok::<_, ()>(matching_senders).for_each(move |sender| {
+                sender
+                    .send(change.clone())
+                    .map_err(|_| ())
+                    .and_then(|_| Ok(()))
+            })
+        }));
     }
 
     /// Handles block reorganizations.
@@ -282,15 +312,31 @@ impl StoreTrait for Store {
         self.schema_provider_event_sink.clone()
     }
 
-    fn event_stream(&mut self) -> Result<Receiver<StoreEvent>, StreamError> {
-        // If possible, create a new channel for streaming store events
-        match self.event_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.event_sink = Some(sink);
-                Ok(stream)
-            }
+    fn subscribe(
+        &mut self,
+        subgraph: String,
+        entities: Vec<String>,
+    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
+        let (sender, receiver) = channel(100);
+
+        let id = Uuid::new_v4().to_string();
+        let subscription = Subscription {
+            subgraph,
+            entities,
+            sender,
+        };
+
+        let subscriptions = self.subscriptions.clone();
+        let mut subscriptions = subscriptions.write().unwrap();
+
+        if subscriptions.contains_key(&id) {
+            let drain = self.logger.clone().fuse();
+            let logger = slog::Logger::root(drain, o!());
+            error!(logger, "Duplicate Store subscription detected"; "id" => &id);
         }
+
+        subscriptions.insert(id.clone(), subscription);
+
+        (id, Box::new(receiver))
     }
 }
