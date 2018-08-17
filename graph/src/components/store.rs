@@ -140,10 +140,11 @@ pub trait Store: BasicStore + Send {
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
 
     /// Subscribe to entity changes for specific subgraphs and entities.
-    /// Returns a stream of entity changes that match the input arguments.
+    /// Returns a unique subscription Id and a stream of entity changes that match
+    /// the input arguments.
     fn subscribe(
         &mut self,
         subgraph: String,
         entities: Vec<String>,
-    ) -> Box<Stream<Item = EntityChange, Error = ()> + Send>;
+    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>);
 }
