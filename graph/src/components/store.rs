@@ -93,7 +93,7 @@ pub enum StoreEvent {
 }
 
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EntityChange {
     pub subgraph: String,
     pub entity: String,
