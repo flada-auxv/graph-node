@@ -108,6 +108,10 @@ impl Store for MockStore {
     ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
         unimplemented!();
     }
+
+    fn unsubscribe(&mut self, id: String) {
+        unimplemented!();
+    }
 }
 
 pub struct FakeStore;
@@ -140,6 +144,10 @@ impl Store for FakeStore {
         subgraph: String,
         entities: Vec<String>,
     ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
+        unimplemented!();
+    }
+
+    fn unsubscribe(&mut self, id: String) {
         unimplemented!();
     }
 }
