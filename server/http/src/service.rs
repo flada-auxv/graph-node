@@ -1,4 +1,3 @@
-use futures::sync::mpsc::Sender;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 use std::sync::Mutex;
@@ -15,15 +14,21 @@ pub type GraphQLServiceResponse =
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct GraphQLService {
+pub struct GraphQLService<Q> {
     schema: Arc<Mutex<Option<Schema>>>,
-    query_sink: Sender<Query>,
+    query_runner: Arc<Q>,
 }
 
-impl GraphQLService {
+impl<Q> GraphQLService<Q>
+where
+    Q: QueryRunner + 'static,
+{
     /// Creates a new GraphQL service.
-    pub fn new(schema: Arc<Mutex<Option<Schema>>>, query_sink: Sender<Query>) -> Self {
-        GraphQLService { schema, query_sink }
+    pub fn new(schema: Arc<Mutex<Option<Schema>>>, query_runner: Arc<Q>) -> Self {
+        GraphQLService {
+            schema,
+            query_runner,
+        }
     }
 
     /// Serves a GraphiQL index.html.
@@ -38,7 +43,7 @@ impl GraphQLService {
 
     /// Handles GraphQL queries received via POST /.
     fn handle_graphql_query(&self, request: Request<Body>) -> GraphQLServiceResponse {
-        let query_sink = self.query_sink.clone();
+        let query_runner = self.query_runner.clone();
         let schema = self.schema.clone();
 
         Box::new(
@@ -50,15 +55,11 @@ impl GraphQLService {
                     let schema = schema.lock().unwrap();
                     GraphQLRequest::new(body, schema.clone())
                 })
-                .and_then(move |(query, receiver)| {
-                    // Forward the query to the system
-                    query_sink
-                        .send(query)
-                        .wait()
-                        .expect("Failed to forward incoming query");
-
-                    // Continue with waiting to receive a result
-                    receiver.map_err(|e| GraphQLServerError::from(e))
+                .and_then(move |query| {
+                    // Run the query using the query runner
+                    query_runner
+                        .run_query(query)
+                        .map_err(|e| GraphQLServerError::from(e))
                 })
                 .then(|result| GraphQLResponse::new(result)),
         )
@@ -87,7 +88,10 @@ impl GraphQLService {
     }
 }
 
-impl Service for GraphQLService {
+impl<Q> Service for GraphQLService<Q>
+where
+    Q: QueryRunner + 'static,
+{
     type ReqBody = Body;
     type ResBody = Body;
     type Error = GraphQLServerError;
@@ -118,19 +122,39 @@ impl Service for GraphQLService {
 
 #[cfg(test)]
 mod tests {
-    use futures::sync::mpsc::channel;
     use graphql_parser;
-    use graphql_parser::query::Value;
+    use graphql_parser::query as q;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
     use std::collections::BTreeMap;
+    use std::iter::FromIterator;
     use std::sync::Mutex;
 
     use graph::prelude::*;
 
     use super::GraphQLService;
     use test_utils;
+
+    /// A simple stupid query runner for testing.
+    #[derive(Default)]
+    pub struct TestQueryRunner;
+
+    impl QueryRunner for TestQueryRunner {
+        fn run_query(
+            &self,
+            _query: Query,
+        ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
+            Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
+                BTreeMap::from_iter(
+                    vec![(
+                        String::from("name"),
+                        q::Value::String(String::from("Jordi")),
+                    )].into_iter(),
+                ),
+            )))))
+        }
+    }
 
     #[test]
     fn posting_invalid_query_yields_error_response() {
@@ -143,8 +167,9 @@ mod tests {
                  ",
             ).unwrap(),
         })));
-        let (query_sink, _) = channel(1);
-        let mut service = GraphQLService::new(schema, query_sink);
+
+        let query_runner = Arc::new(TestQueryRunner::default());
+        let mut service = GraphQLService::new(schema, query_runner);
 
         let request = Request::builder()
             .method(Method::POST)
@@ -171,54 +196,38 @@ mod tests {
 
     #[test]
     fn posting_valid_queries_yields_result_response() {
-        tokio::run(future::lazy(|| {
-            Ok({
-                let schema = Arc::new(Mutex::new(Some(Schema {
-                    id: "test-schema".to_string(),
-                    document: graphql_parser::parse_schema(
-                        "\
-                         scalar String \
-                         type Query { name: String } \
-                         ",
-                    ).unwrap(),
-                })));
-                let (query_sink, query_stream) = channel(1);
-                let mut service = GraphQLService::new(schema, query_sink);
+        let schema = Arc::new(Mutex::new(Some(Schema {
+            id: "test-schema".to_string(),
+            document: graphql_parser::parse_schema(
+                "\
+                 scalar String \
+                 type Query { name: String } \
+                 ",
+            ).unwrap(),
+        })));
 
-                tokio::spawn(
-                    query_stream
-                        .for_each(move |query| {
-                            let mut map = BTreeMap::new();
-                            map.insert("name".to_string(), Value::String("Jordi".to_string()));
-                            let data = Value::Object(map);
-                            let result = QueryResult::new(Some(data));
-                            query.result_sender.send(result).unwrap();
-                            Ok(())
-                        })
-                        .fuse(),
-                );
+        let query_runner = Arc::new(TestQueryRunner::default());
+        let mut service = GraphQLService::new(schema, query_runner);
 
-                let request = Request::builder()
-                    .method(Method::POST)
-                    .uri("http://localhost:8000/graphql")
-                    .body(Body::from("{\"query\": \"{ name }\"}"))
-                    .unwrap();
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("http://localhost:8000/graphql")
+            .body(Body::from("{\"query\": \"{ name }\"}"))
+            .unwrap();
 
-                // The response must be a 200
-                let response = service
-                    .call(request)
-                    .wait()
-                    .expect("Should return a response");
-                let data = test_utils::assert_successful_response(response);
+        // The response must be a 200
+        let response = service
+            .call(request)
+            .wait()
+            .expect("Should return a response");
+        let data = test_utils::assert_successful_response(response);
 
-                // The body should match the simulated query result
-                let name = data
-                    .get("name")
-                    .expect("Query result data has no \"name\" field")
-                    .as_str()
-                    .expect("Query result field \"name\" is not a string");
-                assert_eq!(name, "Jordi".to_string());
-            })
-        }))
+        // The body should match the simulated query result
+        let name = data
+            .get("name")
+            .expect("Query result data has no \"name\" field")
+            .as_str()
+            .expect("Query result field \"name\" is not a string");
+        assert_eq!(name, "Jordi".to_string());
     }
 }
