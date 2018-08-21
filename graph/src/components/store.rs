@@ -1,5 +1,5 @@
 use ethereum_types::H256;
-use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::mpsc::Sender;
 use futures::Stream;
 
 use components::schema::SchemaProviderEvent;
@@ -119,7 +119,7 @@ impl fmt::Display for EventSource {
 }
 
 /// Common trait for store implementations that don't require interaction with the system.
-pub trait BasicStore {
+pub trait BasicStore: Send {
     /// Looks up an entity using the given store key.
     fn get(&self, key: StoreKey) -> Result<Entity, ()>;
 
@@ -134,7 +134,7 @@ pub trait BasicStore {
 }
 
 /// Common trait for store implementations.
-pub trait Store: BasicStore + Send {
+pub trait Store: BasicStore {
     /// Sender to which others should write whenever the schema that the store
     /// should implement changes.
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
