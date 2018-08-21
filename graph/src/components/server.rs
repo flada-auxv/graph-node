@@ -1,14 +1,12 @@
 use futures::prelude::*;
-use futures::sync::mpsc::{Receiver, Sender};
+use futures::sync::mpsc::Sender;
 use futures::sync::oneshot::Canceled;
 use serde::ser::*;
 use std::error::Error;
 use std::fmt;
 
 use super::schema::SchemaProviderEvent;
-use super::store::StoreEvent;
-use data::query::{Query, QueryError};
-use util::stream::StreamError;
+use data::query::QueryError;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
@@ -92,10 +90,6 @@ pub trait GraphQLServer {
     /// Sender to which others should write whenever the schema that the server
     /// should serve changes.
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent>;
-
-    /// Receiver from which others can read incoming queries for processing.
-    /// Can only be called once. Any consecutive call will result in a StreamError.
-    fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError>;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
     fn serve(

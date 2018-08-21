@@ -8,8 +8,6 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Mutex;
 
 use graph::components::schema::SchemaProviderEvent;
-use graph::components::store::StoreEvent;
-use graph::data::query::Query;
 use graph::data::schema::Schema;
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 
@@ -18,7 +16,6 @@ use service::GraphQLService;
 /// Errors that may occur when starting the server.
 #[derive(Debug)]
 pub enum GraphQLServeError {
-    OrphanError,
     BindError(hyper::Error),
 }
 
@@ -34,7 +31,9 @@ impl Error for GraphQLServeError {
 
 impl fmt::Display for GraphQLServeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "OrphanError: No component set up to handle the queries")
+        match self {
+            GraphQLServeError::BindError(e) => write!(f, "Failed to bind GraphQL server: {}", e),
+        }
     }
 }
 
@@ -45,25 +44,25 @@ impl From<hyper::Error> for GraphQLServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct GraphQLServer {
+pub struct GraphQLServer<Q> {
     logger: slog::Logger,
-    query_sink: Option<Sender<Query>>,
     schema_provider_event_sink: Sender<SchemaProviderEvent>,
     schema: Arc<Mutex<Option<Schema>>>,
+    query_runner: Arc<Q>,
 }
 
-impl GraphQLServer {
+impl<Q> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
-    pub fn new(logger: &slog::Logger) -> Self {
+    pub fn new(logger: &slog::Logger, query_runner: Arc<Q>) -> Self {
         // Create channels for handling incoming events from the schema provider
         let (schema_provider_sink, schema_provider_stream) = channel(100);
 
         // Create a new GraphQL server
         let mut server = GraphQLServer {
             logger: logger.new(o!("component" => "GraphQLServer")),
-            query_sink: None,
             schema_provider_event_sink: schema_provider_sink,
             schema: Arc::new(Mutex::new(None)),
+            query_runner: query_runner,
         };
 
         // Spawn tasks to handle incoming events from the schema provider
@@ -90,23 +89,14 @@ impl GraphQLServer {
     }
 }
 
-impl GraphQLServerTrait for GraphQLServer {
+impl<Q> GraphQLServerTrait for GraphQLServer<Q>
+where
+    Q: QueryRunner + Sized + 'static,
+{
     type ServeError = GraphQLServeError;
 
     fn schema_provider_event_sink(&mut self) -> Sender<SchemaProviderEvent> {
         self.schema_provider_event_sink.clone()
-    }
-
-    fn query_stream(&mut self) -> Result<Receiver<Query>, StreamError> {
-        // If possible, create a new channel for streaming incoming queries
-        match self.query_sink {
-            Some(_) => Err(StreamError::AlreadyCreated),
-            None => {
-                let (sink, stream) = channel(100);
-                self.query_sink = Some(sink);
-                Ok(stream)
-            }
-        }
     }
 
     fn serve(
@@ -117,19 +107,13 @@ impl GraphQLServerTrait for GraphQLServer {
 
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
 
-        // Only launch the GraphQL server if there is a component that will handle incoming queries
-        let query_sink = self
-            .query_sink
-            .as_ref()
-            .ok_or(GraphQLServeError::OrphanError)?;
-
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
-        let query_sink = query_sink.clone();
+        let query_runner = self.query_runner.clone();
         let schema = self.schema.clone();
         let new_service = move || {
-            let service = GraphQLService::new(schema.clone(), query_sink.clone());
-            future::ok::<GraphQLService, hyper::Error>(service)
+            let service = GraphQLService::new(schema.clone(), query_runner.clone());
+            future::ok::<GraphQLService<Q>, hyper::Error>(service)
         };
 
         // Create a task to run the server and handle HTTP requests

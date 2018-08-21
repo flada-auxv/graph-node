@@ -7,11 +7,11 @@ extern crate hyper;
 extern crate tokio_executor;
 
 use futures::prelude::*;
-use futures::sync::mpsc::Receiver;
-use graphql_parser::query::Value;
+use graphql_parser::query as q;
 use http::StatusCode;
 use hyper::{Body, Client, Request};
 use std::collections::BTreeMap;
+use std::iter::FromIterator;
 
 use graph::components::schema::SchemaProviderEvent;
 use graph::prelude::*;
@@ -19,21 +19,24 @@ use graph::prelude::*;
 use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
-/// Helper function that simulates running a single incoming query and then
-/// closing the query stream.
-fn simulate_running_one_query(query_stream: Receiver<Query>) {
-    tokio::spawn(
-        query_stream
-            .for_each(move |query| {
-                let mut map = BTreeMap::new();
-                map.insert("name".to_string(), Value::String("Jordi".to_string()));
-                let data = Value::Object(map);
-                let result = QueryResult::new(Some(data));
-                query.result_sender.send(result).unwrap();
-                Ok(())
-            })
-            .fuse(),
-    );
+/// A simple stupid query runner for testing.
+#[derive(Default)]
+pub struct TestQueryRunner;
+
+impl QueryRunner for TestQueryRunner {
+    fn run_query(
+        &self,
+        _query: Query,
+    ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
+        Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
+            BTreeMap::from_iter(
+                vec![(
+                    String::from("name"),
+                    q::Value::String(String::from("Jordi")),
+                )].into_iter(),
+            ),
+        )))))
+    }
 }
 
 #[test]
@@ -45,8 +48,8 @@ fn rejects_empty_json() {
         |_| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
+            let query_runner = Arc::new(TestQueryRunner::default());
+            let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
             // Create a simple schema and send it to the server
@@ -66,7 +69,6 @@ fn rejects_empty_json() {
                 .expect("Failed to send schema to server");
 
             // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
             tokio::spawn(http_server.fuse());
 
             // Send an empty JSON POST request
@@ -105,12 +107,11 @@ fn rejects_invalid_queries() {
         |_| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
+            let query_runner = Arc::new(TestQueryRunner::default());
+            let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
             // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
             tokio::spawn(http_server.fuse());
 
             // Create a simple schema and send it to the server
@@ -199,12 +200,11 @@ fn accepts_valid_queries() {
         |_| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let mut server = HyperGraphQLServer::new(&logger);
-            let query_stream = server.query_stream().unwrap();
+            let query_runner = Arc::new(TestQueryRunner::default());
+            let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 
             // Launch the server to handle a single request
-            simulate_running_one_query(query_stream);
             tokio::spawn(http_server.fuse());
 
             // Create a simple schema and send it to the server
@@ -234,7 +234,7 @@ fn accepts_valid_queries() {
                 .block_on(client.request(request).and_then(|response| {
                     let data = test_utils::assert_successful_response(response);
 
-                    // The JSON response should match the simulated query result
+                    // The JSON response should match the mock query result
                     let name = data
                         .get("name")
                         .expect("Query result data has no \"name\" field")
