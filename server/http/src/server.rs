@@ -91,7 +91,7 @@ impl<Q> GraphQLServer<Q> {
 
 impl<Q> GraphQLServerTrait for GraphQLServer<Q>
 where
-    Q: QueryRunner + Sized + 'static,
+    Q: GraphQLRunner + Sized + 'static,
 {
     type ServeError = GraphQLServeError;
 

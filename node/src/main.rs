@@ -145,11 +145,11 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     let mut schema_provider = graph_core::SchemaProvider::new(&logger);
     let store = DieselStore::new(StoreConfig { url: postgres_url }, &logger);
     let protected_store = Arc::new(Mutex::new(store));
-    let query_runner = Arc::new(graph_core::QueryRunner::new(
+    let graphql_runner = Arc::new(graph_core::GraphQLRunner::new(
         &logger,
         protected_store.clone(),
     ));
-    let mut graphql_server = HyperGraphQLServer::new(&logger, query_runner.clone());
+    let mut graphql_server = HyperGraphQLServer::new(&logger, graphql_runner.clone());
 
     // Create Ethereum adapter
     let (transport_event_loop, transport) = ethereum_ipc

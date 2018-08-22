@@ -74,7 +74,7 @@ impl<Q> MockGraphQLServer<Q> {
 
 impl<Q> GraphQLServer for MockGraphQLServer<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + 'static,
 {
     type ServeError = MockServeError;
 

@@ -49,8 +49,8 @@ pub mod prelude {
     pub use std::sync::Arc;
 
     pub use components::ethereum::EthereumAdapter;
+    pub use components::graphql::{GraphQLRunner};
     pub use components::link_resolver::LinkResolver;
-    pub use components::query::QueryRunner;
     pub use components::schema::{SchemaProvider, SchemaProviderEvent};
     pub use components::server::GraphQLServer;
     pub use components::store::{
