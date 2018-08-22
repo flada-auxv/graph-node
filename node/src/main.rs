@@ -162,6 +162,58 @@ fn async_main() -> impl Future<Item = (), Error = ()> + Send + 'static {
     ));
     let mut graphql_server = HyperGraphQLServer::new(&logger, graphql_runner.clone());
 
+    // EXPERIMENT
+    {
+        extern crate graphql_parser;
+
+        let result_future = graphql_runner.run_subscription(Subscription {
+            query: Query {
+                document: graphql_parser::parse_query(
+                    "
+                     subscription {
+                       users {
+                         id
+                         user_address
+                       }
+                     }
+                    ",
+                ).unwrap(),
+                schema: Schema {
+                    id: String::from("example schema"),
+                    document: graphql_parser::parse_schema(
+                        "
+                         type User @subgraphId(id: \"QmfZttQStZ26dz1PvLjHc3qYfjgae4X6vUhsgyodUEjTV5\") {
+                           id: ID!
+                           user_address: String!
+                         }
+
+                         type Subscription {
+                           users: [User!]!
+                         }
+                        ",
+                    ).unwrap(),
+                },
+                variables: None,
+            },
+        });
+
+        tokio::spawn(
+            result_future
+                .map_err(|e| {
+                    println!("SUBSCRIPTION ERROR: {:?}", e);
+                })
+                .and_then(|result| {
+                    println!("HAVE SUBSCRIPTION");
+
+                    result.stream.for_each(|query_result| {
+                        println!("SUBSCRIPTION RESULT: {:?}", query_result);
+                        Ok(())
+                    })
+                }),
+        );
+    }
+    // END OF EXPERIMENT
+
     // Create Ethereum adapter
     let (transport_event_loop, transport) = ethereum_ipc
         .map(Transport::new_ipc)
