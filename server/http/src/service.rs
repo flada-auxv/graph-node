@@ -21,7 +21,7 @@ pub struct GraphQLService<Q> {
 
 impl<Q> GraphQLService<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + 'static,
 {
     /// Creates a new GraphQL service.
     pub fn new(schema: Arc<Mutex<Option<Schema>>>, query_runner: Arc<Q>) -> Self {
@@ -90,7 +90,7 @@ where
 
 impl<Q> Service for GraphQLService<Q>
 where
-    Q: QueryRunner + 'static,
+    Q: GraphQLRunner + 'static,
 {
     type ReqBody = Body;
     type ResBody = Body;
@@ -138,9 +138,9 @@ mod tests {
 
     /// A simple stupid query runner for testing.
     #[derive(Default)]
-    pub struct TestQueryRunner;
+    pub struct TestGraphQLRunner;
 
-    impl QueryRunner for TestQueryRunner {
+    impl GraphQLRunner for TestGraphQLRunner {
         fn run_query(
             &self,
             _query: Query,
@@ -168,7 +168,7 @@ mod tests {
             ).unwrap(),
         })));
 
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestGraphQLRunner::default());
         let mut service = GraphQLService::new(schema, query_runner);
 
         let request = Request::builder()
@@ -206,7 +206,7 @@ mod tests {
             ).unwrap(),
         })));
 
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestGraphQLRunner::default());
         let mut service = GraphQLService::new(schema, query_runner);
 
         let request = Request::builder()
