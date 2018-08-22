@@ -1,10 +1,11 @@
 use graphql_parser::{query as q, schema as s};
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::result;
 use std::sync::{Arc, Mutex};
 
 use graph::components::store::*;
-use graph::prelude::{slog::*, BasicStore, Value};
+use graph::prelude::{slog::*, QueryExecutionError, Store, Value};
 
 use prelude::*;
 use query::ast as qast;
@@ -15,11 +16,11 @@ use store::query::build_subgraph_id;
 #[derive(Clone)]
 pub struct StoreResolver {
     logger: Logger,
-    store: Arc<Mutex<BasicStore>>,
+    store: Arc<Mutex<Store>>,
 }
 
 impl StoreResolver {
-    pub fn new(logger: &Logger, store: Arc<Mutex<BasicStore>>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<Mutex<Store>>) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
@@ -294,5 +295,31 @@ impl Resolver for StoreResolver {
                     .unwrap_or(q::Value::Null)
             }
         }
+    }
+
+    fn resolve_field_stream<'a, 'b>(
+        &self,
+        schema: &'a s::Document,
+        object_type: &'a s::ObjectType,
+        field: &'b q::Field,
+    ) -> result::Result<EntityChangeStream, QueryExecutionError> {
+        let field_type = sast::get_field_type(object_type, &field.name).ok_or(
+            QueryExecutionError::UnknownField(
+                field.position.clone(),
+                object_type.name.clone(),
+                field.name.clone(),
+            ),
+        )?;
+
+        println!("Field type: {:#?}", field_type);
+
+        // TODO: Obtain the subgraph ID from the subscription
+        // TODO: Resolve the entity type that corresponds to the field type
+
+        // FIXME: Use real values here, taken from the schema, object type and field
+        Ok(self.store.lock().unwrap().subscribe(
+            String::from("QmfZttQStZ26dz1PvLjHc3qYfjgae4X6vUhsgyodUEjTV5"),
+            vec![String::from("User")],
+        ))
     }
 }
