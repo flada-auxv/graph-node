@@ -86,15 +86,7 @@ impl Store for MockStore {
         self.schema_provider_event_sink.clone()
     }
 
-    fn subscribe(
-        &mut self,
-        _subgraph: String,
-        _entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
-        unimplemented!();
-    }
-
-    fn unsubscribe(&mut self, _id: String) {
+    fn subscribe(&mut self, _subgraph: String, _entities: Vec<String>) -> EntityChangeStream {
         unimplemented!();
     }
 }
@@ -124,15 +116,7 @@ impl Store for FakeStore {
         panic!("called FakeStore")
     }
 
-    fn subscribe(
-        &mut self,
-        _subgraph: String,
-        _entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
-        unimplemented!();
-    }
-
-    fn unsubscribe(&mut self, _id: String) {
+    fn subscribe(&mut self, _subgraph: String, _entities: Vec<String>) -> EntityChangeStream {
         unimplemented!();
     }
 }

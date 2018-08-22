@@ -312,11 +312,7 @@ impl StoreTrait for Store {
         self.schema_provider_event_sink.clone()
     }
 
-    fn subscribe(
-        &mut self,
-        subgraph: String,
-        entities: Vec<String>,
-    ) -> (String, Box<Stream<Item = EntityChange, Error = ()> + Send>) {
+    fn subscribe(&mut self, subgraph: String, entities: Vec<String>) -> EntityChangeStream {
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
         let id = Uuid::new_v4().to_string();
@@ -337,11 +333,6 @@ impl StoreTrait for Store {
         subscriptions.insert(id.clone(), subscription);
 
         // Return the subscription ID and entity change stream
-        (id, Box::new(receiver))
-    }
-
-    fn unsubscribe(&mut self, id: String) {
-        let subscriptions = self.subscriptions.clone();
-        subscriptions.write().unwrap().remove(&id);
+        Box::new(receiver)
     }
 }
