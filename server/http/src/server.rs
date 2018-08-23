@@ -134,59 +134,69 @@ where
     }
 }
 
-#[test]
-fn emits_an_api_schema_after_one_schema_is_added() {
-    use graph_graphql::schema::ast;
+#[cfg(test)]
+mod tests {
+    extern crate graph_mock;
+
     use std::ops::Deref;
     use std::time::{Duration, Instant};
 
-    let mut runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime
-        .block_on(future::lazy(|| {
-            let res: Result<_, ()> = Ok({
-                // Set up the server
-                let logger = Logger::root(slog::Discard, o!());
-                let mut server = GraphQLServer::new(&logger);
-                let schema_sink = server.schema_event_sink();
+    use self::graph_mock::MockQueryRunner;
+    use graph_graphql::schema::ast;
 
-                // Create an input schema event
-                let input_doc =
-                    ::graphql_parser::parse_schema("type User { name: String! }").unwrap();
-                let input_schema = Schema {
-                    id: "input-schema".to_string(),
-                    document: input_doc,
-                };
-                let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
+    use super::*;
 
-                // Send the input schema event to the server
-                schema_sink.send(input_event).wait().unwrap();
+    #[test]
+    fn emits_an_api_schema_after_one_schema_is_added() {
+        let mut runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(future::lazy(|| {
+                let res: Result<_, ()> = Ok({
+                    // Set up the server
+                    let logger = Logger::root(slog::Discard, o!());
+                    let query_runner = Arc::new(MockQueryRunner::new(&logger));
+                    let mut server = GraphQLServer::new(&logger, query_runner);
+                    let schema_sink = server.schema_event_sink();
 
-                // Wait for the schema to be received and extract it.
-                // Wait for thirty seconds for that to happen, otherwise fail the test.
-                let start_time = Instant::now();
-                let max_wait = Duration::from_secs(30);
-                let output_schema = loop {
-                    if let Some(schema) = server.schema.lock().unwrap().deref() {
-                        break schema.clone();
-                    } else if Instant::now().duration_since(start_time) > max_wait {
-                        panic!("Timed out, schema not received")
-                    }
-                    ::std::thread::yield_now();
-                };
+                    // Create an input schema event
+                    let input_doc =
+                        ::graphql_parser::parse_schema("type User { name: String! }").unwrap();
+                    let input_schema = Schema {
+                        id: "input-schema".to_string(),
+                        document: input_doc,
+                    };
+                    let input_event = SchemaEvent::SchemaAdded(input_schema.clone());
 
-                assert_eq!(output_schema.id, input_schema.id);
+                    // Send the input schema event to the server
+                    schema_sink.send(input_event).wait().unwrap();
 
-                // The output schema must include the input schema types
-                assert_eq!(
-                    ast::get_named_type(&input_schema.document, &"User".to_string()),
-                    ast::get_named_type(&output_schema.document, &"User".to_string())
-                );
+                    // Wait for the schema to be received and extract it.
+                    // Wait for thirty seconds for that to happen, otherwise fail the test.
+                    let start_time = Instant::now();
+                    let max_wait = Duration::from_secs(30);
+                    let output_schema = loop {
+                        if let Some(schema) = server.schema.lock().unwrap().deref() {
+                            break schema.clone();
+                        } else if Instant::now().duration_since(start_time) > max_wait {
+                            panic!("Timed out, schema not received")
+                        }
+                        ::std::thread::yield_now();
+                    };
 
-                // The output schema must include a Query type
-                ast::get_named_type(&output_schema.document, &"Query".to_string())
-                    .expect("Query type missing in output schema");
-            });
-            res
-        }))
-        .unwrap();
+                    assert_eq!(output_schema.id, input_schema.id);
+
+                    // The output schema must include the input schema types
+                    assert_eq!(
+                        ast::get_named_type(&input_schema.document, &"User".to_string()),
+                        ast::get_named_type(&output_schema.document, &"User".to_string())
+                    );
+
+                    // The output schema must include a Query type
+                    ast::get_named_type(&output_schema.document, &"Query".to_string())
+                        .expect("Query type missing in output schema");
+                });
+                res
+            }))
+            .unwrap();
+    }
 }

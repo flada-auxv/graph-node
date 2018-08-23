@@ -12,4 +12,5 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 
 [dev-dependencies]
+graph-mock = { path = "../../mock" }
 tokio-executor = "0.1.2"
