@@ -141,7 +141,7 @@ mod tests {
     use std::ops::Deref;
     use std::time::{Duration, Instant};
 
-    use self::graph_mock::MockQueryRunner;
+    use self::graph_mock::MockGraphQLRunner;
     use graph_graphql::schema::ast;
 
     use super::*;
@@ -154,7 +154,7 @@ mod tests {
                 let res: Result<_, ()> = Ok({
                     // Set up the server
                     let logger = Logger::root(slog::Discard, o!());
-                    let query_runner = Arc::new(MockQueryRunner::new(&logger));
+                    let query_runner = Arc::new(MockGraphQLRunner::new(&logger));
                     let mut server = GraphQLServer::new(&logger, query_runner);
                     let schema_sink = server.schema_event_sink();
 
