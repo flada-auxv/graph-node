@@ -137,7 +137,6 @@ mod tests {
     use test_utils;
 
     /// A simple stupid query runner for testing.
-    #[derive(Default)]
     pub struct TestQueryRunner;
 
     impl QueryRunner for TestQueryRunner {
