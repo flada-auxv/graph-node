@@ -19,13 +19,10 @@ use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 /// A simple stupid query runner for testing.
 #[derive(Default)]
-pub struct TestQueryRunner;
+pub struct TestGraphQLRunner;
 
-impl QueryRunner for TestQueryRunner {
-    fn run_query(
-        &self,
-        _query: Query,
-    ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
+impl GraphQLRunner for TestGraphQLRunner {
+    fn run_query(&self, _query: Query) -> QueryResultFuture {
         Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
             BTreeMap::from_iter(
                 vec![(
@@ -34,6 +31,10 @@ impl QueryRunner for TestQueryRunner {
                 )].into_iter(),
             ),
         )))))
+    }
+
+    fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
+        unimplemented!();
     }
 }
 
@@ -44,7 +45,7 @@ fn rejects_empty_json() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestGraphQLRunner::default());
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
@@ -93,7 +94,7 @@ fn rejects_invalid_queries() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestGraphQLRunner::default());
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
@@ -176,7 +177,7 @@ fn accepts_valid_queries() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestGraphQLRunner::default());
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 
