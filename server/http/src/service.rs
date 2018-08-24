@@ -168,7 +168,7 @@ mod tests {
             ).unwrap(),
         })));
 
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestQueryRunner);
         let mut service = GraphQLService::new(schema, query_runner);
 
         let request = Request::builder()
@@ -206,7 +206,7 @@ mod tests {
             ).unwrap(),
         })));
 
-        let query_runner = Arc::new(TestQueryRunner::default());
+        let query_runner = Arc::new(TestQueryRunner);
         let mut service = GraphQLService::new(schema, query_runner);
 
         let request = Request::builder()

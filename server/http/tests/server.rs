@@ -44,7 +44,7 @@ fn rejects_empty_json() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestQueryRunner);
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8001).expect("Failed to start GraphQL server");
 
@@ -93,7 +93,7 @@ fn rejects_invalid_queries() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestQueryRunner);
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8002).expect("Failed to start GraphQL server");
 
@@ -176,7 +176,7 @@ fn accepts_valid_queries() {
         .block_on(futures::lazy(|| {
             let logger = slog::Logger::root(slog::Discard, o!());
 
-            let query_runner = Arc::new(TestQueryRunner::default());
+            let query_runner = Arc::new(TestQueryRunner);
             let mut server = HyperGraphQLServer::new(&logger, query_runner);
             let http_server = server.serve(8003).expect("Failed to start GraphQL server");
 
