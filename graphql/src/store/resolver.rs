@@ -10,7 +10,7 @@ use graph::prelude::{slog::*, QueryExecutionError, Store, Value};
 use prelude::*;
 use query::ast as qast;
 use schema::ast as sast;
-use store::query::build_subgraph_id;
+use store::query::{collect_entities_from_query_field, parse_subgraph_id};
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
@@ -239,7 +239,7 @@ impl Resolver for StoreResolver {
             let store = self.store.lock().unwrap();
             return store
                 .get(StoreKey {
-                    subgraph: build_subgraph_id(object_type).expect(
+                    subgraph: parse_subgraph_id(object_type).expect(
                         format!("Failed to get subgraph ID from type: {}", object_type.name)
                             .as_str(),
                     ),
@@ -257,7 +257,7 @@ impl Resolver for StoreResolver {
                     .lock()
                     .unwrap()
                     .get(StoreKey {
-                        subgraph: build_subgraph_id(object_type).expect(
+                        subgraph: parse_subgraph_id(object_type).expect(
                             format!("Failed to get subgraph ID from type: {}", object_type.name)
                                 .as_str(),
                         ),
