@@ -303,23 +303,19 @@ impl Resolver for StoreResolver {
         object_type: &'a s::ObjectType,
         field: &'b q::Field,
     ) -> result::Result<EntityChangeStream, QueryExecutionError> {
-        let field_type = sast::get_field_type(object_type, &field.name).ok_or(
-            QueryExecutionError::UnknownField(
+        // Fail if the field does not exist on the object type
+        if sast::get_field_type(object_type, &field.name).is_none() {
+            return Err(QueryExecutionError::UnknownField(
                 field.position.clone(),
                 object_type.name.clone(),
                 field.name.clone(),
-            ),
-        )?;
+            ));
+        }
 
-        println!("Field type: {:#?}", field_type);
+        // Collect all entities involved in the query field
+        let entities = collect_entities_from_query_field(schema, object_type, field);
 
-        // TODO: Obtain the subgraph ID from the subscription
-        // TODO: Resolve the entity type that corresponds to the field type
-
-        // FIXME: Use real values here, taken from the schema, object type and field
-        Ok(self.store.lock().unwrap().subscribe(
-            String::from("QmfZttQStZ26dz1PvLjHc3qYfjgae4X6vUhsgyodUEjTV5"),
-            vec![String::from("User")],
-        ))
+        // Subscribe to the store and return the entity change stream
+        Ok(self.store.lock().unwrap().subscribe(entities))
     }
 }
