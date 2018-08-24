@@ -141,10 +141,7 @@ mod tests {
     pub struct TestGraphQLRunner;
 
     impl GraphQLRunner for TestGraphQLRunner {
-        fn run_query(
-            &self,
-            _query: Query,
-        ) -> Box<Future<Item = QueryResult, Error = QueryError> + Send> {
+        fn run_query(&self, _query: Query) -> QueryResultFuture {
             Box::new(future::ok(QueryResult::new(Some(q::Value::Object(
                 BTreeMap::from_iter(
                     vec![(
@@ -153,6 +150,10 @@ mod tests {
                     )].into_iter(),
                 ),
             )))))
+        }
+
+        fn run_subscription(&self, _subscription: Subscription) -> SubscriptionResultFuture {
+            unimplemented!();
         }
     }
 
