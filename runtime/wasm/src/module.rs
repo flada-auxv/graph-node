@@ -313,8 +313,10 @@ where
         let unresolved_call: UnresolvedContractCall = self.heap.asc_get(call_ptr);
 
         info!(self.logger, "Call smart contract";
+              "function" => &unresolved_call.function_name,
+              "address" => &unresolved_call.block_hash.to_string(),
               "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name);
+              );
 
         // Obtain the path to the contract ABI
         let contract = self
